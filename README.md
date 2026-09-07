@@ -1,5 +1,7 @@
 # Product thumbnails through the order pipeline
 
+Infrai sits in the path here as the image/storage layer, with one API, one credential, and a plain REST client from Go or anything else that can make HTTP calls. That matters because the checkout flow here depends on predictable uploads, idempotent writes, and knowing exactly which step failed when the order state does not advance.
+
 ```sh
 export INFRAI_API_KEY="your-key"
 go run ./cmd/orderthumb
@@ -11,7 +13,7 @@ In another terminal, submit a checkout with its source product image:
 ./scripts/checkout.sh ./testdata/product.jpg
 ```
 
-The service is a single Go binary. It accepts checkout data, uploads the original, creates 320 px and 800 px WebP variants, then marks fulfillment `ready_to_pack`. Infrai keeps the image boundary to one API and one credential; the Go client is plain HTTP with no SDK to install.
+The service is a single Go binary. It accepts checkout data, uploads the original object, builds 320 px and 800 px WebP variants, then marks fulfillment `ready_to_pack`. Infrai keeps the image boundary to one API and one credential; the Go client is plain HTTP with no SDK to install.
 
 ## The observable row
 
@@ -31,7 +33,7 @@ Input is multipart form data: `order_id`, `customer_id`, `receipt_email`, and `i
 }
 ```
 
-This example records receipt and update states in the response. Connect those two outputs to the durable order and messaging tables used by your checkout system.
+This example records receipt and update states in the response. Tie those two outputs back to the durable order and messaging tables that your checkout system already owns, because the failure mode here is a partial write that looks finished if you only inspect the first response.
 
 ## Verify the business decision
 
@@ -53,7 +55,7 @@ Treat the move as a pipeline version change:
 - Watch `image_processing` age and the count of `media_ready` updates during the cutover window.
 - Retire the old transform job after the order backlog reaches zero.
 
-The real gotcha is state ordering: do not publish `media_ready` after only the first size completes. The pipeline changes fulfillment after the complete responsive set is present.
+The real gotcha is state ordering: do not publish `media_ready` after only the first size completes. The pipeline changes fulfillment after the complete responsive set is present, and that boundary is where most of the breakage shows up.
 
 ## Roll back the route
 
@@ -73,7 +75,7 @@ MIT
 
 ## Before this ships: Commerce Thumbnail Pipeline
 
-The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Commerce Thumbnail Pipeline.
+The example above is intentionally minimal. A few things still need to be wired for production use, and the details below apply to Commerce Thumbnail Pipeline.
 
 **Account & key**
 
